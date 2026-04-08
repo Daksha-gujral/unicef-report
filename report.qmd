@@ -1,0 +1,389 @@
+---
+title: "Every Child. Every Home. Every Day."
+subtitle: "Children & Violent Discipline Worldwide — A UNICEF Data Report"
+author: "Daksha Gujral"
+date: today
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+    theme: flatly
+    toc: true
+    toc-title: "Contents"
+    toc-depth: 3
+    fig-align: center
+    page-layout: full
+    css: styles.css
+execute:
+  warning: false
+  message: false
+  echo: true
+---
+
+```{python}
+#| label: setup
+#| code-summary: "Load libraries & data"
+
+import pandas as pd
+import geopandas as gpd
+from plotnine import *
+import warnings, importlib.resources, os
+warnings.filterwarnings("ignore")
+
+# ── Load data ──────────────────────────────────────────────────────────────────
+ind2  = pd.read_csv("unicef_indicator_2.csv")
+meta  = pd.read_csv("unicef_metadata.csv")
+
+# Portable world shapefile — works locally and on GitHub Actions
+def _load_world():
+    # Option 1: pyogrio bundled fixture (available when pyogrio is installed)
+    import importlib.util
+    spec = importlib.util.find_spec("pyogrio")
+    if spec:
+        import os
+        base = os.path.dirname(spec.origin)
+        shp = os.path.join(base, "tests", "fixtures",
+                           "naturalearth_lowres", "naturalearth_lowres.shp")
+        if os.path.exists(shp):
+            return gpd.read_file(shp)
+    # Option 2: geopandas bundled data (older geopandas versions)
+    try:
+        import geopandas.datasets
+        return gpd.read_file(gpd.datasets.get_path("naturalearth_lowres"))
+    except Exception:
+        pass
+    # Option 3: download via geodatasets (newer geopandas)
+    try:
+        from geodatasets import get_path
+        return gpd.read_file(get_path("naturalearth.land"))
+    except Exception:
+        pass
+    raise RuntimeError("Could not load world shapefile via any method.")
+
+world = _load_world()
+
+# ── Tidy indicator 2 ───────────────────────────────────────────────────────────
+ind2.columns = ind2.columns.str.strip()
+total  = ind2[ind2["sex"] == "Total"].copy()
+female = ind2[ind2["sex"] == "Female"].copy()
+male   = ind2[ind2["sex"] == "Male"].copy()
+
+# Latest observation per country (Total)
+latest = (
+    total.sort_values("time_period", ascending=False)
+         .drop_duplicates("alpha_3_code")
+         .reset_index(drop=True)
+)
+
+# ── UNICEF colour palette ──────────────────────────────────────────────────────
+UNICEF_BLUE  = "#1CABE2"
+UNICEF_DARK  = "#374EA2"
+UNICEF_RED   = "#E2231A"
+UNICEF_GOLD  = "#F9A825"
+UNICEF_GREY  = "#6D6E71"
+BG_COLOR     = "#F0F7FB"
+```
+
+---
+
+## 🌍 The Invisible Crisis in the Home
+
+> *"Violence against children in the home is the most pervasive form of child abuse — and the least reported."*  
+> — **UNICEF**
+
+Globally, **nearly 3 in 4 children** aged 1–14 experience violent discipline — physical punishment or psychological aggression — at the hands of their own caregivers. This is not a crisis confined to war zones or the very poorest nations. It happens **everywhere**: in cities and villages, in wealthy families and poor ones, affecting **boys and girls alike**.
+
+This report draws on UNICEF data to expose the scale, geography, and drivers of violent discipline worldwide — because **behind every number is a real child**.
+
+---
+
+## 📌 Key Statistics
+
+::: {.callout-important}
+### The Scale of the Problem
+
+- **72.6%** of children aged 1–14 experience violent discipline at home *globally*
+- **94%** — the highest recorded rate in a single country (Ghana)
+- In the worst-affected countries, rates exceed **90%**, meaning **9 in 10 children** are subjected to violence in their own homes
+- **Boys face slightly higher rates** than girls — yet both genders exceed **80%** in the most affected countries
+:::
+
+---
+
+## 🗺️ Chart 1: Where Are Children Most at Risk?
+
+*This world map shows the percentage of children aged 1–14 who experience violent discipline at home. Countries are shaded from light blue (lower rates) to deep red (higher rates). Grey countries indicate no data available.*
+
+```{python}
+#| label: world-map
+#| fig-width: 12
+#| fig-height: 6
+#| code-summary: "World map — violent discipline rate"
+
+map_df = world.merge(
+    latest[["alpha_3_code", "obs_value"]],
+    left_on="iso_a3", right_on="alpha_3_code",
+    how="left"
+)
+
+(
+    ggplot(map_df)
+    + geom_map(aes(fill="obs_value"), color="white", size=0.15)
+    + scale_fill_gradient(
+        low="#AED6F1", high=UNICEF_RED,
+        name="Rate (%)",
+        na_value="#CCCCCC",
+        limits=(0, 100)
+    )
+    + labs(
+        title="Violent Discipline Rates Among Children Aged 1–14",
+        subtitle="Percentage of children experiencing physical punishment or psychological aggression at home",
+        caption="Source: UNICEF Indicator Data  |  Grey = no data available"
+    )
+    + theme_void()
+    + theme(
+        figure_size=(12, 6),
+        plot_title=element_text(size=15, weight="bold", color=UNICEF_DARK),
+        plot_subtitle=element_text(size=10, color=UNICEF_GREY),
+        plot_caption=element_text(size=8, color=UNICEF_GREY),
+        legend_title=element_text(size=9),
+        panel_background=element_rect(fill=BG_COLOR),
+        plot_background=element_rect(fill=BG_COLOR),
+    )
+)
+```
+
+### 🔎 No Safe Corner on Earth
+
+From **Sub-Saharan Africa** to **South Asia**, violent discipline is the norm — not the exception. The darkest regions on the map cluster across Central and West Africa, parts of the Pacific, and South Asia, where rates consistently exceed **85–94%**.
+
+- The **lightest-shaded countries** (Europe, parts of Latin America) still report rates of **40–60%** — meaning even in the best-performing nations, nearly **half of all children** experience violent discipline at home
+- **Geography offers no real protection**; this is a truly global crisis
+
+---
+
+## 📊 Chart 2: The Top 15 Most Affected Countries
+
+*Every country in this ranking sees more than 87% of its children experiencing violent discipline. Ghana tops the list at 94% — meaning only 6 in 100 children are spared.*
+
+```{python}
+#| label: bar-chart
+#| fig-width: 10
+#| fig-height: 6
+#| code-summary: "Bar chart — Top 15 countries"
+
+top15 = (
+    latest.nlargest(15, "obs_value")
+          .sort_values("obs_value")
+          .assign(country=lambda d: pd.Categorical(d["country"], categories=d["country"], ordered=True))
+)
+
+top15["fill_color"] = top15["obs_value"].apply(
+    lambda v: UNICEF_RED if v == top15["obs_value"].max() else UNICEF_BLUE
+)
+
+(
+    ggplot(top15, aes(x="country", y="obs_value", fill="obs_value"))
+    + geom_col(width=0.75)
+    + geom_text(aes(label="obs_value"), ha="left", nudge_y=0.4, size=8, color="#333333")
+    + scale_fill_gradient(low=UNICEF_BLUE, high=UNICEF_RED, guide=False)
+    + coord_flip()
+    + scale_y_continuous(limits=(0, 102), expand=(0, 0))
+    + labs(
+        title="These Are Not War Zones — These Are Homes",
+        subtitle="Top 15 countries by violent discipline rate (% of children aged 1–14)",
+        x=None,
+        y="Violent Discipline Rate (%)",
+        caption="Source: UNICEF Indicator Data  |  Latest available year per country"
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(10, 6),
+        plot_title=element_text(size=14, weight="bold", color=UNICEF_DARK),
+        plot_subtitle=element_text(size=10, color=UNICEF_GREY),
+        plot_caption=element_text(size=8, color=UNICEF_GREY),
+        panel_background=element_rect(fill=BG_COLOR),
+        plot_background=element_rect(fill=BG_COLOR),
+        panel_grid_major_y=element_blank(),
+        panel_grid_minor=element_blank(),
+        axis_text=element_text(size=9),
+        legend_position="none",
+    )
+)
+```
+
+### 🔎 These Are Not War Zones — These Are Homes
+
+The countries at the top of this ranking are not all conflict zones. Many are stable, functioning societies — yet violence against children inside the home is **normalised and widespread**:
+
+- **Ghana** leads at **94%**, meaning only **6 in 100 children** escape violent discipline
+- **Kiribati (92.1%)**, **Togo (91.8%)**, and **Samoa (90.8%)** follow closely
+- Every country in the top 15 exceeds **87%** — representing hundreds of millions of children
+
+---
+
+## 📈 Chart 3: Does Wealth Protect Children?
+
+*Each dot represents one country. Moving right along the X axis means higher GDP per capita (wealthier nations). Moving down the Y axis means fewer children are affected. The regression line reveals a clear downward trend — but no country is immune.*
+
+```{python}
+#| label: scatter-gdp
+#| fig-width: 10
+#| fig-height: 6
+#| code-summary: "Scatterplot — GDP per capita vs discipline rate"
+
+# Merge latest indicator 2 with most recent GDP
+latest_gdp = (
+    meta[["alpha_3_code", "year", "GDP per capita (constant 2015 US$)"]]
+    .dropna(subset=["GDP per capita (constant 2015 US$)"])
+    .sort_values("year", ascending=False)
+    .drop_duplicates("alpha_3_code")
+    .rename(columns={"GDP per capita (constant 2015 US$)": "gdp_pc"})
+)
+
+scatter_df = latest.merge(latest_gdp, on="alpha_3_code", how="inner")
+scatter_df["gdp_k"] = scatter_df["gdp_pc"] / 1000  # express in thousands
+
+(
+    ggplot(scatter_df, aes(x="gdp_k", y="obs_value"))
+    + geom_point(color=UNICEF_BLUE, alpha=0.65, size=3)
+    + geom_smooth(method="lm", color=UNICEF_RED, se=True, fill=UNICEF_RED, alpha=0.12)
+    + scale_x_continuous(labels=lambda l: [f"${int(v)}K" for v in l])
+    + scale_y_continuous(limits=(0, 100))
+    + labs(
+        title="Does Wealth Protect Children?",
+        subtitle="GDP per capita (USD, 2015 constant) vs. violent discipline rate — each dot is one country",
+        x="GDP per Capita (USD thousands)",
+        y="Violent Discipline Rate (%)",
+        caption="Source: UNICEF Indicator Data & World Bank via UNICEF Metadata"
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(10, 6),
+        plot_title=element_text(size=14, weight="bold", color=UNICEF_DARK),
+        plot_subtitle=element_text(size=10, color=UNICEF_GREY),
+        plot_caption=element_text(size=8, color=UNICEF_GREY),
+        panel_background=element_rect(fill=BG_COLOR),
+        plot_background=element_rect(fill=BG_COLOR),
+        panel_grid_minor=element_blank(),
+        axis_text=element_text(size=9),
+    )
+)
+```
+
+### 🔎 Wealth Reduces Risk — But Does Not Eliminate It
+
+The regression line confirms a **clear negative relationship**: as GDP per capita rises, violent discipline rates tend to fall. However:
+
+- Even **high-income countries** report rates **exceeding 40%** in some cases
+- The cluster of countries with **GDP under $10,000** shows rates mostly **above 70%**
+- **Poverty amplifies risk**, but wealth does not guarantee safety — cultural norms, legal frameworks, and social attitudes matter just as much
+
+---
+
+## 📉 Chart 4: A Decade of Data — Has the World Improved?
+
+*This time-series shows the average violent discipline rate across all countries with data available for each year, from 2013 to 2023. Each point represents the cross-country average for that year.*
+
+```{python}
+#| label: time-series
+#| fig-width: 10
+#| fig-height: 5
+#| code-summary: "Time-series — average rate by year"
+
+ts_df = (
+    total.groupby("time_period")["obs_value"]
+         .agg(avg_rate="mean", n_countries="count")
+         .reset_index()
+         .rename(columns={"time_period": "year"})
+)
+
+(
+    ggplot(ts_df, aes(x="year", y="avg_rate"))
+    + geom_line(color=UNICEF_BLUE, size=1.2)
+    + geom_point(color=UNICEF_RED, size=3.5)
+    + geom_text(
+        aes(label="avg_rate.round(1)"),
+        va="bottom", nudge_y=1.2, size=8, color="#333333"
+    )
+    + scale_x_continuous(breaks=list(range(2013, 2024)))
+    + scale_y_continuous(limits=(30, 90))
+    + labs(
+        title="Has the World Made Progress?",
+        subtitle="Average violent discipline rate across reporting countries (2013–2023)",
+        x="Year",
+        y="Average Rate (%)",
+        caption="Source: UNICEF Indicator Data  |  Note: Country coverage varies by year"
+    )
+    + theme_minimal()
+    + theme(
+        figure_size=(10, 5),
+        plot_title=element_text(size=14, weight="bold", color=UNICEF_DARK),
+        plot_subtitle=element_text(size=10, color=UNICEF_GREY),
+        plot_caption=element_text(size=8, color=UNICEF_GREY),
+        panel_background=element_rect(fill=BG_COLOR),
+        plot_background=element_rect(fill=BG_COLOR),
+        panel_grid_minor=element_blank(),
+        axis_text=element_text(size=9),
+        axis_text_x=element_text(angle=30),
+    )
+)
+```
+
+### 🔎 Progress Is Inconsistent — The Crisis Persists
+
+The trend over the past decade is **not a story of steady decline**. Average rates fluctuate between **44% and 80%** across years, largely reflecting *which countries reported data* in any given year. This inconsistency itself is part of the problem:
+
+- **Data gaps are common** — many of the highest-risk countries report only sporadically
+- There is **no clear downward trend**, suggesting the global community has not made decisive progress
+- Without consistent measurement, accountability is impossible
+
+---
+
+## 💬 The Silent Majority
+
+> *Every day, millions of children return home — not to safety, but to violence.*
+
+This is **not limited to conflict or poverty** — it happens everywhere. The data tells a consistent story across geographies, income levels, and genders:
+
+- Nearly **3 in 4 children** aged 1–14 globally experience violent discipline at home
+- In the worst-affected countries, this rises to **9 in 10**
+- **Boys face slightly higher rates** than girls — yet both genders exceed 80% in the most affected nations
+- **Wealth reduces risk, but does not eliminate it** — even high-income countries report rates above 40%
+
+Gender offers no real protection. Geography offers no escape. Wealth softens — but does not solve — the problem.
+
+---
+
+## ✊ What Must Be Done?
+
+The path forward requires action on multiple fronts:
+
+1. **Legal reform** — Prohibit all forms of corporal punishment in the home (currently only ~67 countries have done so)
+2. **Parenting support programmes** — Evidence-based, culturally sensitive programmes that teach positive discipline
+3. **Data collection** — Invest in consistent, regular data so no country can hide behind a lack of evidence
+4. **Changing norms** — Sustained public campaigns to shift the cultural acceptance of violent discipline as "normal"
+
+::: {.callout-tip}
+### Take Action
+Visit [UNICEF's End Violence Campaign](https://www.unicef.org/end-violence) to learn how you can support efforts to protect children from violent discipline worldwide.
+:::
+
+---
+
+## 📚 Data Sources
+
+| Dataset | Description |
+|---------|-------------|
+| `unicef_indicator_2.csv` | % of children aged 1–14 experiencing violent discipline, by country, sex, year |
+| `unicef_metadata.csv` | Country-level GDP per capita, life expectancy, population (World Bank via UNICEF) |
+| Natural Earth (built-in) | World country geometries for mapping |
+
+*All data sourced from UNICEF and the World Bank. Analysis and visualisations produced with Python (plotnine, geopandas, pandas) and rendered with Quarto.*
+
+---
+
+<div style="text-align:center; margin-top: 40px; padding: 20px; background-color: #1CABE2; border-radius: 8px; color: white;">
+  <h3 style="margin:0; font-size: 1.4em;">🌐 UNICEF — For Every Child</h3>
+  <p style="margin: 8px 0 0 0; font-size: 0.9em;">Behind every number is a real child. The data demands action.</p>
+</div>
