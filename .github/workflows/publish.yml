@@ -20,7 +20,7 @@ jobs:
 
       - name: Install Python packages
         run: |
-          pip install pandas geopandas plotnine matplotlib pyogrio geodatasets
+          pip install pandas geopandas plotnine matplotlib pyogrio geodatasets pyyaml jupyter
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
